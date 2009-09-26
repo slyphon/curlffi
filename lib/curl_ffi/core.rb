@@ -22,6 +22,9 @@ module CurlFFI
       attach_function :_duphandle,    :curl_easy_duphandle, [:pointer], :pointer
       attach_function :reset,         :curl_easy_reset,     [:pointer], :void
 
+#       callback :default_data_handler_callback, [:string, :ulong, :ulong, 
+        
+
       @@global_init_done = false     unless defined?(@@global_init_done)
       @@mutex            = Mutex.new unless defined?(@@mutex)
 
@@ -42,23 +45,29 @@ module CurlFFI
       end
 
       def self.response_code(handle)
-        ptr = FFI::MemoryPointer.new(:long)
-        check_zero { _getinfo(handle, CURLINFO_RESPONSE_CODE, ptr) }
-        ptr.read_long
-      ensure
-        ptr.free if ptr
+        getinfo(handle, CURLINFO_RESPONSE_CODE, :long)
+      end
+
+      def self.getinfo(handle, const, ptr_type)
+        FFI::MemoryPointer.new(ptr_type.to_sym) do |ptr|
+          check_zero { _getinfo(handle, const, ptr) }
+          ptr.__send__(:"read_#{ptr_type}")
+        end
       end
 
       def self.setoptstr(ptr, int, str)
         check_zero { _setoptstr(ptr, int, str) }
+        str
       end
 
       def self.setopt(ptr, int, val)
         check_zero { _setopt(ptr, int, val) }
+        val
       end
 
       def self.setoptlong(ptr, int, long)
         check_zero { _setoptlong(ptr, int, long) }
+        long
       end
 
       def self.init

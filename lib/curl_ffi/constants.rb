@@ -210,8 +210,6 @@ module CurlFFI
     CURL_HTTP_VERSION_NONE  = 0
     CURL_HTTP_VERSION_1_0   = 1
     CURL_HTTP_VERSION_1_1   = 2
-
-
   end
 end
 
