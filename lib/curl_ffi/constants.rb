@@ -66,6 +66,7 @@ module CurlFFI
 
     # options
     CURLOPT_FILE                        = COTYPE_OBJECTPOINT    + 1
+    CURLOPT_URL                         = COTYPE_OBJECTPOINT    + 2
     CURLOPT_PORT                        = COTYPE_LONG           + 3
     CURLOPT_PROXY                       = COTYPE_OBJECTPOINT    + 4
     CURLOPT_USERPWD                     = COTYPE_OBJECTPOINT    + 5
@@ -201,6 +202,10 @@ module CurlFFI
     CURLOPT_HTTP_TRANSFER_DECODING      = COTYPE_LONG           + 157
     CURLOPT_HTTP_CONTENT_DECODING       = COTYPE_LONG           + 158
 
+    # these are synonymous
+    CURLOPT_WRITEDATA     = CURLOPT_FILE
+    CURLOPT_READDATA      = CURLOPT_INFILE
+    CURLOPT_HEADERDATA    = CURLOPT_WRITEHEADER
 
     # status
     CURLE_OK              = 0

@@ -1,10 +1,9 @@
 module CurlFFI
   module Core
     module Easy
+      include Logger
       include Constants
       extend FFI::Library
-
-      
 
       ffi_lib "curl"
 
@@ -24,7 +23,7 @@ module CurlFFI
       attach_function :_duphandle,    :curl_easy_duphandle, [:pointer], :pointer
       attach_function :reset,         :curl_easy_reset,     [:pointer], :void
 
-      WRITE_FUNC      = callback([:pointer, :size_t, :size_t, :pointer], :size_t)
+      WRITE_FUNC      = callback([:pointer, :size_t, :size_t, :pointer], :size_t) unless defined?(WRITE_FUNC)
       attach_function :_setwritefunc, :curl_easy_setopt, [ :pointer, :int, WRITE_FUNC ], :int
 
       @@global_init_done = false     unless defined?(@@global_init_done)
@@ -106,6 +105,7 @@ module CurlFFI
         end
 
         def self.raise_curl_errno!(int)
+          $stderr.puts "raising curl errno: #{int}"
           raise CurlFFIError, self.strerror(int)
         end
     end

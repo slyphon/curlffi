@@ -1,63 +1,69 @@
 module CurlFFI
   class Easy
+    include Logger
     include Constants
     include Core
 
     BODY_BUF_SIZE = 32 * 1024  #:nodoc:
     HEADER_BUF_SIZE = BODY_BUF_SIZE
 
-    DEFAULT_DATA_HANDLER = lambda do |stream,size,nmemb,out|
-
-      size * nmemb
-    end
-
     attr_reader :interface, :url, :header_str, :body_str
 
-    class << self
-      def _finalize(inst) #:nodoc:
-        inst.finalize!
-      end
-    end
+    DEFAULT_WRITE_HANDLER = FFI::Function.new(:size_t, [:pointer, :size_t, :size_t, :pointer]) do |ptr,size,nmemb,stream|
+      p [ptr,size,nmemb,stream]
+      size * nmemb
+    end unless defined?(DEFAULT_WRITE_HANDLER)
 
     def initialize(url=nil)
       @url = url
-      @handle = Core::Easy.init
+      @easy = Core::Easy.init
       
-      Core::Easy.setoptlong(@handle, CURLOPT_NOSIGNAL, 1)
+      Core::Easy.setoptlong(@easy, CURLOPT_NOSIGNAL, 1)
       
       @interface = nil
-      @body_buf = FFI::MemoryPointer.new(BODY_BUF_SIZE)
-      @body_str = ''
 
-      @header_buf = FFI::MemoryPointer.new(HEADER_BUF_SIZE)
-      @header_str = ''
+      @body_str, @header_str = '', ''
 
-      on_body(&default_data_handler(@body_str, @body_buf))
-      on_header(&default_data_handler(@header_str, @header_buf))
+      @body_proc_wrapper = @header_proc_wrapper = nil
+
+      @body_proc = default_data_handler(@body_str)
+      Core::Easy.setopt(@easy, CURLOPT_WRITEFUNCTION, @body_proc)  
+
+      @header_proc = default_data_handler(@header_str)
+      Core::Easy.setopt(@easy, CURLOPT_HEADERFUNCTION, @header_proc)  
     end
 
     def url=(str)
+      logger.debug "set url to #{str}"
       @url = str.dup.freeze
-      @url_mem_ptr = MemoryPointer.from_string(str)      # h/t wmeissner
-      Core::Easy.setoptstr(@handle, CURLOPT_URL, @url_mem_ptr)
+      @url_mem_ptr = FFI::MemoryPointer.from_string(str)      # h/t wmeissner
+      Core::Easy.setopt(@easy, CURLOPT_URL, @url_mem_ptr)
     end
 
     def interface=(str)
+      logger.debug "set interface to #{str}"
       @interface = str.dup.freeze
-      @interface_mem_ptr = MemoryPointer.from_string(str)
-      Core::Easy.setoptstr(@easy, CURLOPT_INTERFACE, @interface)
+      @interface_mem_ptr = FFI::MemoryPointer.from_string(str)
+      Core::Easy.setopt(@easy, CURLOPT_INTERFACE, @interface)
     end
 
     def on_body(&block)
-      orig_blk, @body_proc = @body_proc, block
-      Core::Easy.setwritefunc(@easy, CURLOPT_WRITEFUNCTION, @body_proc)
+      orig_blk, @body_proc = @body_proc, block.to_proc
+      @body_proc_wrapper = data_proc_wrapper(@body_proc)
+      Core::Easy.setopt(@easy, CURLOPT_WRITEFUNCTION, @body_proc_wrapper)
       orig_blk
     end
 
     def on_header(&block)
-      orig_blk, @header_proc = @header_proc, block
-      Core::Easy.setwritefunc(@easy, CURLOPT_HEADERFUNCTION, @header_proc)
+      orig_blk, @header_proc = @header_proc, block.to_proc
+      @header_proc_wrapper = data_proc_wrapper(@header_proc)
+      Core::Easy.setopt(@easy, CURLOPT_HEADERFUNCTION, @header_proc_wrapper)
       orig_blk
+    end
+
+    def perform
+      logger.debug "calling perform"
+      Core::Easy.perform(@easy)
     end
 
     #--
@@ -134,15 +140,39 @@ module CurlFFI
 
     protected
       def getinfo(const, ptr_type)
-        Core::Easy.getinfo(@handle, const, ptr_type)
+        Core::Easy.getinfo(@easy, const, ptr_type)
       end
 
-      def default_data_handler(sink, buffer)
-        lambda do |_,size,nmemb,_|
-          rval = size * nmemb
-          sink << buffer.get_string(0, rval)
+      def create_curl_data_callback(&block)
+        FFI::Function.new(:size_t, [:pointer, :size_t, :size_t, :pointer], &block)
+      end
+
+      def progress_proc_wrapper(prok)
+        FFI::Function.new(:size_t, [:pointer, :double, :double, :double, :double]) do |_,dl_total,dl_now,ul_total,ul_now|
+          prok.call(dl_total,dl_now,ul_total,ul_now) ? 0 : 1
+        end
+      end
+
+      def data_proc_wrapper(prok)
+        create_curl_data_callback do |ptr,size,nmemb,stream|
+          rval = prok.call(ptr.get_string(0, size*nmemb))
+
+          unless rval
+            warn("Curl data handlers should return the number of bytes read as an Integer")
+            rval = (size * nmemb)
+          end
+
           rval
         end
+      end
+
+      def default_data_handler(sink)
+        p = lambda do |data|
+          sink << data
+          data.length
+        end
+
+        data_proc_wrapper(p)
       end
   end
 end
