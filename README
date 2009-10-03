@@ -1,0 +1,5 @@
+This library aims to provide a ruby/jruby compatible wrapper around libcurl
+using the ffi library.
+
+It is currently in very-alpha stages.
+
