@@ -1,4 +1,4 @@
-module CurlFfi
+module CurlFFI
   class Easy
     include Constants
     include Core
@@ -26,10 +26,10 @@ module CurlFfi
       Core::Easy.setoptlong(@handle, CURLOPT_NOSIGNAL, 1)
       
       @interface = nil
-      @body_buf = FFI::MemoryPointer.new(:buffer_in, BODY_BUF_SIZE)
+      @body_buf = FFI::MemoryPointer.new(BODY_BUF_SIZE)
       @body_str = ''
 
-      @header_buf = FFI::MemoryPointer.new(:buffer_in, HEADER_BUF_SIZE)
+      @header_buf = FFI::MemoryPointer.new(HEADER_BUF_SIZE)
       @header_str = ''
 
       on_body(&default_data_handler(@body_str, @body_buf))
@@ -39,24 +39,24 @@ module CurlFfi
     def url=(str)
       @url = str.dup.freeze
       @url_mem_ptr = MemoryPointer.from_string(str)      # h/t wmeissner
-      Easy.setoptstr(@handle, CURLOPT_URL, @url_mem_ptr)
+      Core::Easy.setoptstr(@handle, CURLOPT_URL, @url_mem_ptr)
     end
 
     def interface=(str)
       @interface = str.dup.freeze
       @interface_mem_ptr = MemoryPointer.from_string(str)
-      Easy.setoptstr(@easy, CURLOPT_INTERFACE, @interface)
+      Core::Easy.setoptstr(@easy, CURLOPT_INTERFACE, @interface)
     end
 
     def on_body(&block)
       orig_blk, @body_proc = @body_proc, block
-      Easy.setwritefunc(@easy, CURLOPT_WRITEFUNCTION, @body_proc)
+      Core::Easy.setwritefunc(@easy, CURLOPT_WRITEFUNCTION, @body_proc)
       orig_blk
     end
 
     def on_header(&block)
       orig_blk, @header_proc = @header_proc, block
-      Easy.setwritefunc(@easy, CURLOPT_HEADERFUNCTION, @header_proc)
+      Core::Easy.setwritefunc(@easy, CURLOPT_HEADERFUNCTION, @header_proc)
       orig_blk
     end
 
@@ -134,7 +134,7 @@ module CurlFfi
 
     protected
       def getinfo(const, ptr_type)
-        Easy.getinfo(@handle, const, ptr_type)
+        Core::Easy.getinfo(@handle, const, ptr_type)
       end
 
       def default_data_handler(sink, buffer)

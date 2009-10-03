@@ -4,6 +4,8 @@ module CurlFFI
       include Constants
       extend FFI::Library
 
+      
+
       ffi_lib "curl"
 
       attach_function :cleanup,       :curl_easy_cleanup,   [:pointer], :void
@@ -30,7 +32,7 @@ module CurlFFI
 
       class CurlHandle < FFI::AutoPointer
         def self.release(ptr)
-          CurlFfi::Core::Easy.cleanup(ptr)
+          CurlFFI::Core::Easy.cleanup(ptr)
         end
       end
 
@@ -82,7 +84,9 @@ module CurlFFI
       end
 
       def self.init
-        CurlHandle.new(assert_non_null(_init))
+        ptr = self._init
+        raise CurlInitFailedError unless ptr
+        CurlHandle.new(ptr)
       end
 
       def self.perform(ptr)
@@ -90,22 +94,19 @@ module CurlFFI
       end
 
       def self.duphandle(ptr)
-        assert_non_null(_duphandle(ptr))
+        new_ptr = _duphandle(ptr)
+        raise CurlDuphandleFailedError unless new_ptr
+        CurlHandle.new(new_ptr)
       end
 
       protected
         def self.assert_zero(val)
-          raise_curl_errno! unless val == 0
+          raise_curl_errno!(val) unless val == 0
           val
         end
 
-        def self.assert_non_null(val)
-          raise_curl_errno! if val.nil?
-          val
-        end
-
-        def self.raise_curl_errno!
-          raise CurlFfiError, self.strerror
+        def self.raise_curl_errno!(int)
+          raise CurlFFIError, self.strerror(int)
         end
     end
   end
