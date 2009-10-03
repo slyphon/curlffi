@@ -22,17 +22,23 @@ module CurlFFI
       attach_function :_duphandle,    :curl_easy_duphandle, [:pointer], :pointer
       attach_function :reset,         :curl_easy_reset,     [:pointer], :void
 
-#       callback :default_data_handler_callback, [:string, :ulong, :ulong, 
-        
+      WRITE_FUNC      = callback([:pointer, :size_t, :size_t, :pointer], :size_t)
+      attach_function :_setwritefunc, :curl_easy_setopt, [ :pointer, :int, WRITE_FUNC ], :int
 
       @@global_init_done = false     unless defined?(@@global_init_done)
       @@mutex            = Mutex.new unless defined?(@@mutex)
+
+      class CurlHandle < FFI::AutoPointer
+        def self.release(ptr)
+          CurlFfi::Core::Easy.cleanup(ptr)
+        end
+      end
 
       def self.global_init!
         @@mutex.synchronize do
           return if @@global_init_done
           @@global_init_done = true
-          check_zero { _global_init(CURL_GLOBAL_DEFAULT) }
+          assert_zero(_global_init(CURL_GLOBAL_DEFAULT))
         end
       end
 
@@ -50,47 +56,52 @@ module CurlFFI
 
       def self.getinfo(handle, const, ptr_type)
         FFI::MemoryPointer.new(ptr_type.to_sym) do |ptr|
-          check_zero { _getinfo(handle, const, ptr) }
+          assert_zero(_getinfo(handle, const, ptr))
           ptr.__send__(:"read_#{ptr_type}")
         end
       end
 
       def self.setoptstr(ptr, int, str)
-        check_zero { _setoptstr(ptr, int, str) }
+        assert_zero(_setoptstr(ptr, int, str))
         str
       end
 
       def self.setopt(ptr, int, val)
-        check_zero { _setopt(ptr, int, val) }
+        assert_zero(_setopt(ptr, int, val))
         val
       end
 
       def self.setoptlong(ptr, int, long)
-        check_zero { _setoptlong(ptr, int, long) }
+        assert_zero(_setoptlong(ptr, int, long))
         long
       end
 
+      def self.setwritefunc(ptr, int, prok)
+        assert_zero(_setwritefunc(ptr, int, prok))
+        prok
+      end
+
       def self.init
-        check_non_null { _init }
+        CurlHandle.new(assert_non_null(_init))
       end
 
       def self.perform(ptr)
-        check_zero { _perform(ptr) }
+        assert_zero(_perform(ptr))
       end
 
       def self.duphandle(ptr)
-        check_non_null { _duphandle(ptr) }
+        assert_non_null(_duphandle(ptr))
       end
 
       protected
-        def self.check_zero
-          rval = yield
-          raise_curl_errno! unless rval == 0
-          rval
+        def self.assert_zero(val)
+          raise_curl_errno! unless val == 0
+          val
         end
 
-        def self.check_non_null
-          yield or raise_curl_errno!
+        def self.assert_non_null(val)
+          raise_curl_errno! if val.nil?
+          val
         end
 
         def self.raise_curl_errno!

@@ -4,13 +4,14 @@ module CurlFfi
     include Core
 
     BODY_BUF_SIZE = 32 * 1024  #:nodoc:
+    HEADER_BUF_SIZE = BODY_BUF_SIZE
 
     DEFAULT_DATA_HANDLER = lambda do |stream,size,nmemb,out|
 
       size * nmemb
     end
 
-    attr_reader :interface, :url
+    attr_reader :interface, :url, :header_str, :body_str
 
     class << self
       def _finalize(inst) #:nodoc:
@@ -24,20 +25,39 @@ module CurlFfi
       
       Core::Easy.setoptlong(@handle, CURLOPT_NOSIGNAL, 1)
       
-      ObjectSpace.define_finalizer(self, self.class.method(:_finalize).to_proc)
-
       @interface = nil
       @body_buf = FFI::MemoryPointer.new(:buffer_in, BODY_BUF_SIZE)
+      @body_str = ''
+
+      @header_buf = FFI::MemoryPointer.new(:buffer_in, HEADER_BUF_SIZE)
+      @header_str = ''
+
+      on_body(&default_data_handler(@body_str, @body_buf))
+      on_header(&default_data_handler(@header_str, @header_buf))
     end
 
     def url=(str)
       @url = str.dup.freeze
-      Easy.setoptstr(@handle, CURLOPT_URL, @url)
+      @url_mem_ptr = MemoryPointer.from_string(str)      # h/t wmeissner
+      Easy.setoptstr(@handle, CURLOPT_URL, @url_mem_ptr)
     end
 
     def interface=(str)
       @interface = str.dup.freeze
+      @interface_mem_ptr = MemoryPointer.from_string(str)
       Easy.setoptstr(@easy, CURLOPT_INTERFACE, @interface)
+    end
+
+    def on_body(&block)
+      orig_blk, @body_proc = @body_proc, block
+      Easy.setwritefunc(@easy, CURLOPT_WRITEFUNCTION, @body_proc)
+      orig_blk
+    end
+
+    def on_header(&block)
+      orig_blk, @header_proc = @header_proc, block
+      Easy.setwritefunc(@easy, CURLOPT_HEADERFUNCTION, @header_proc)
+      orig_blk
     end
 
     #--
@@ -112,14 +132,17 @@ module CurlFfi
       getinfo(CURLINFO_CONTENT_LENGTH_UPLOAD, :double).to_f
     end
 
-    def finalize! #:nodoc:
-      CurlFfi::Core::Easy.cleanup(@handle)
-      @body_buf.free if @body_buf 
-    end
-
     protected
       def getinfo(const, ptr_type)
         Easy.getinfo(@handle, const, ptr_type)
+      end
+
+      def default_data_handler(sink, buffer)
+        lambda do |_,size,nmemb,_|
+          rval = size * nmemb
+          sink << buffer.get_string(0, rval)
+          rval
+        end
       end
   end
 end
