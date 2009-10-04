@@ -7,6 +7,18 @@ module CurlFFI
 
       ffi_lib "curl"
 
+      # incomplete, but good enough for our purposes
+      class VersionInfoStruct < FFI::Struct
+        layout  :age,             :int,
+                :version,         :string,
+                :version_num,     :uint,
+                :host,            :string,
+                :features,        :int,
+                :ssl_version,     :string,
+                :ssl_version_num, :long,
+                :libz_version,    :string,
+      end
+
       attach_function :cleanup,       :curl_easy_cleanup,   [:pointer], :void
       attach_function :strerror,      :curl_easy_strerror,  [:int],     :string
 
@@ -17,14 +29,16 @@ module CurlFFI
       attach_function :_setopt,       :curl_easy_setopt,    [:pointer, :int, :pointer], :int
       attach_function :_setoptstr,    :curl_easy_setopt,    [:pointer, :int, :string],  :int
       attach_function :_setoptlong,   :curl_easy_setopt,    [:pointer, :int, :long],    :int
+      attach_function :_setoptint,    :curl_easy_setopt,    [:pointer, :int, :int],     :int
 
       attach_function :_getinfo,      :curl_easy_getinfo,   [:pointer, :int, :pointer], :int
 
+      attach_function :_version_info, :curl_version_info,   [:int],     VersionInfo
       attach_function :_duphandle,    :curl_easy_duphandle, [:pointer], :pointer
       attach_function :reset,         :curl_easy_reset,     [:pointer], :void
 
-      WRITE_FUNC      = callback([:pointer, :size_t, :size_t, :pointer], :size_t) unless defined?(WRITE_FUNC)
-      attach_function :_setwritefunc, :curl_easy_setopt, [ :pointer, :int, WRITE_FUNC ], :int
+#       WRITE_FUNC      = callback([:pointer, :size_t, :size_t, :pointer], :size_t) unless defined?(WRITE_FUNC)
+#       attach_function :_setwritefunc, :curl_easy_setopt, [ :pointer, :int, WRITE_FUNC ], :int
 
       @@global_init_done = false     unless defined?(@@global_init_done)
       @@mutex            = Mutex.new unless defined?(@@mutex)
@@ -63,23 +77,23 @@ module CurlFFI
       end
 
       def self.setoptstr(ptr, int, str)
-        assert_zero(_setoptstr(ptr, int, str))
-        str
+        assert_zero(_setoptstr(ptr, int, str)); str
       end
 
       def self.setopt(ptr, int, val)
-        assert_zero(_setopt(ptr, int, val))
-        val
+        assert_zero(_setopt(ptr, int, val)); val
       end
 
       def self.setoptlong(ptr, int, long)
-        assert_zero(_setoptlong(ptr, int, long))
-        long
+        assert_zero(_setoptlong(ptr, int, long)); long
+      end
+
+      def self.setoptint(ptr, intopt, int)
+        assert_zero(_setoptint(ptr, intopt, int)); int
       end
 
       def self.setwritefunc(ptr, int, prok)
-        assert_zero(_setwritefunc(ptr, int, prok))
-        prok
+        assert_zero(_setwritefunc(ptr, int, prok)); prok
       end
 
       def self.init
@@ -96,6 +110,11 @@ module CurlFFI
         new_ptr = _duphandle(ptr)
         raise CurlDuphandleFailedError unless new_ptr
         CurlHandle.new(new_ptr)
+      end
+
+      # returns a singleton wrapper around VersionInfoStruct
+      def self.version_info
+        @_version_info ||= Version.new(VersionInfoStruct.new(_version_info(CURLVERSION_NOW)))
       end
 
       protected

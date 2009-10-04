@@ -7,12 +7,15 @@ module CurlFFI
     BODY_BUF_SIZE = 32 * 1024  #:nodoc:
     HEADER_BUF_SIZE = BODY_BUF_SIZE
 
-    attr_reader :interface, :url, :header_str, :body_str
+    attr_reader :interface, :url, :header_str, :body_str, :timeout,
+      :connect_timeout,
 
     DEFAULT_WRITE_HANDLER = FFI::Function.new(:size_t, [:pointer, :size_t, :size_t, :pointer]) do |ptr,size,nmemb,stream|
       p [ptr,size,nmemb,stream]
       size * nmemb
     end unless defined?(DEFAULT_WRITE_HANDLER)
+
+    DEFAULT_DNS_CACHE_TIMEOUT_VALUE = 60
 
     def initialize(url=nil)
       @url = url
@@ -31,6 +34,12 @@ module CurlFFI
 
       @header_proc = default_data_handler(@header_str)
       Core::Easy.setopt(@easy, CURLOPT_HEADERFUNCTION, @header_proc)  
+
+      @progress_proc = nil
+
+      @timeout = 0
+      @connect_timeout = 0
+      @dns_cache_timeout = DEFAULT_DNS_CACHE_TIMEOUT_VALUE
     end
 
     def url=(str)
@@ -61,6 +70,14 @@ module CurlFFI
       orig_blk
     end
 
+    def on_progress(&block)
+      orig_blk, @progress_proc = @progress_proc, block.to_proc
+      @progress_proc_wrapper = progress_proc_wrapper(@progress_proc)
+      Core::Easy.setopt(@easy, CURLOPT_PROGRESSFUNCTION, @progress_proc_wrapper)
+      Core::Easy.setoptint(@easy, CURLOPT_NOPROGRESS, 0)
+      orig_blk
+    end
+
     def perform
       logger.debug "calling perform"
       Core::Easy.perform(@easy)
@@ -82,14 +99,67 @@ module CurlFFI
       getinfo(CURLINFO_RESPONSE_CODE, :long)
     end
 
-    # 7.9.7
     def redirect_count
-      getinfo(CURLINFO_REDIRECT_COUNT, :long)
+      if version >= '7.9.7'
+        getinfo(CURLINFO_REDIRECT_COUNT, :long)
+      else
+        warn "Installed libcurl is too old to support redirect_count"
+        return -1
+      end
     end
     
-    # 7.9.7
     def redirect_time
-      getinfo(CURLINFO_REDIRECT_TIME, :double).to_f
+      if version >= '7.9.7'
+        getinfo(CURLINFO_REDIRECT_TIME, :double).to_f
+      else
+        warn "Installed libcurl is too old to support redirect_time"
+        return -1
+      end
+    end
+
+    def os_errno
+      if version >= '7.12.2'
+        getinfo(CURLINFO_OS_ERRNO, :long).to_i
+      else
+        warn "Installed libcurl is too old to support os_errno"
+        return 0
+      end
+    end
+
+    def file_time
+      if version >= '7.5.0'
+        getinfo(CURLINFO_FILETIME, :long).to_i
+      else
+        warn "Installed libcurl is too old to support file_time"
+        return 0
+      end
+    end
+
+    def num_connects
+      if version >= '7.12.3'
+        getinfo(CURLINFO_NUM_CONNECTS, :long).to_i
+      else
+        warn "Installed libcurl is too old to support num_connects"
+        return 0
+      end
+    end
+
+    def timeout=(val)
+      @timeout = val
+      Core::Easy.setoptlong(@easy, CURLOPT_TIMEOUT, val)
+      val
+    end
+
+    def connect_timeout=(val)
+      @connect_timeout = v
+      Core::Easy.setoptlong(@easy, CURLOPT_CONNECTTIMEOUT, val)
+      val
+    end
+
+    def dns_cache_timeout=(val)
+      @dns_cache_timeout = val
+      Core::Easy.setoptlong(@easy, CURLOPT_DNS_CACHE_TIMEOUT, val)
+      val
     end
 
     # 7.18.2
@@ -149,7 +219,7 @@ module CurlFFI
 
       def progress_proc_wrapper(prok)
         FFI::Function.new(:size_t, [:pointer, :double, :double, :double, :double]) do |_,dl_total,dl_now,ul_total,ul_now|
-          prok.call(dl_total,dl_now,ul_total,ul_now) ? 0 : 1
+          prok.call(dl_total,dl_now,ul_total,ul_now) ? 1 : 0
         end
       end
 
@@ -173,6 +243,10 @@ module CurlFFI
         end
 
         data_proc_wrapper(p)
+      end
+
+      def version
+        @version ||= CurlFFI::Core.version_info
       end
   end
 end

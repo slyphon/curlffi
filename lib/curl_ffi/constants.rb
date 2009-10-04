@@ -1,5 +1,7 @@
 module CurlFFI
   module Constants
+    CURLVERSION_NOW       = 3
+
     # constants defined in curl.h
     CURL_GLOBAL_SSL       = (1 << 0)
     CURL_GLOBAL_WIN32     = (1 << 1)

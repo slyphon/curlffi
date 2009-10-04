@@ -33,6 +33,7 @@ module CurlFFI
 end
 
 require 'curl_ffi/logger'
+require 'curl_ffi/version'
 require 'curl_ffi/constants'
 require 'curl_ffi/core'
 require 'curl_ffi/easy'
